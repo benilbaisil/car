@@ -1,36 +1,8 @@
 <?php
 session_start();
 require_once __DIR__ . '/config.php';
-
-// Cart domain class re-used on this page to interact with session
-class Cart
-{
-    private string $sessionKey = 'cart';
-
-    public function __construct()
-    {
-        if (!isset($_SESSION[$this->sessionKey])) {
-            $_SESSION[$this->sessionKey] = ['items' => []];
-        }
-    }
-
-    public function getItems(): array
-    {
-        return (array)($_SESSION[$this->sessionKey]['items'] ?? []);
-    }
-
-    public function remove(int $productId): void
-    {
-        if (isset($_SESSION[$this->sessionKey]['items'][$productId])) {
-            unset($_SESSION[$this->sessionKey]['items'][$productId]);
-        }
-    }
-
-    public function clear(): void
-    {
-        $_SESSION[$this->sessionKey] = ['items' => []];
-    }
-}
+require_once __DIR__ . '/classes/Cart.php';
+require_once __DIR__ . '/classes/Currency.php';
 
 // Handle actions: remove item, clear, or checkout (demo only).
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -46,10 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     if (isset($_POST['checkout'])) {
-        // NOTE: For demo, just clear and show a thank you. In production, create order rows.
-        $cart->clear();
-        $_SESSION['checkout_success'] = true;
-        header('Location: cart.php');
+        // Redirect to address form before checkout
+        header('Location: address_form.php');
         exit;
     }
 }
@@ -99,11 +69,10 @@ if (!empty($items)) {
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 class="text-3xl font-bold text-white mb-6">Your Cart</h1>
 
-        <?php if (!empty($_SESSION['checkout_success'])): ?>
-            <div class="mb-6 bg-green-600/20 text-green-300 border border-green-600/40 px-4 py-2 rounded">
-                Thank you! Your order has been placed (demo checkout).
+        <?php if (isset($_SESSION['error'])): ?>
+            <div class="mb-6 bg-red-600/20 text-red-300 border border-red-600/40 px-4 py-2 rounded">
+                <?php echo htmlspecialchars($_SESSION['error']); unset($_SESSION['error']); ?>
             </div>
-            <?php unset($_SESSION['checkout_success']); ?>
         <?php endif; ?>
 
         <?php if (empty($products)): ?>
@@ -136,9 +105,9 @@ if (!empty($items)) {
                                     <div>Scale: <?php echo htmlspecialchars($p['scale']); ?></div>
                                     <?php if (!empty($p['variant'])): ?><div>Variant: <?php echo htmlspecialchars($p['variant']); ?></div><?php endif; ?>
                                 </td>
-                                <td class="px-4 py-3 text-right text-white">$<?php echo number_format((float)$p['price'], 2); ?></td>
+                                <td class="px-4 py-3 text-right text-white"><?php echo Currency::format((float)$p['price']); ?></td>
                                 <td class="px-4 py-3 text-center text-white"><?php echo (int)$p['quantity']; ?></td>
-                                <td class="px-4 py-3 text-right text-white">$<?php echo number_format((float)$p['subtotal'], 2); ?></td>
+                                <td class="px-4 py-3 text-right text-white"><?php echo Currency::format((float)$p['subtotal']); ?></td>
                                 <td class="px-4 py-3 text-right">
                                     <form method="post" action="cart.php">
                                         <input type="hidden" name="remove_id" value="<?php echo (int)$p['id']; ?>">
@@ -152,13 +121,18 @@ if (!empty($items)) {
             </div>
 
             <div class="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div class="text-white text-xl">Total: <strong>$<?php echo number_format($total, 2); ?></strong></div>
+                <div class="text-white text-xl">Total: <strong><?php echo Currency::format($total); ?></strong></div>
                 <div class="flex gap-3">
                     <form method="post" action="cart.php">
-                        <button name="clear_cart" value="1" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded">Clear Cart</button>
+                        <button name="clear_cart" value="1" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded transition">Clear Cart</button>
                     </form>
                     <form method="post" action="cart.php">
-                        <button name="checkout" value="1" class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded font-semibold">Checkout</button>
+                        <button name="checkout" value="1" class="bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 text-white px-6 py-2 rounded font-semibold transition transform hover:scale-105 flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                            Proceed to Checkout
+                        </button>
                     </form>
                 </div>
             </div>

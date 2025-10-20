@@ -1,7 +1,7 @@
 <?php
-session_start();
-
 declare(strict_types=1);
+
+session_start();
 
 // Check if user is logged in
 if (!isset($_SESSION['user'])) {

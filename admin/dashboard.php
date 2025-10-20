@@ -9,6 +9,8 @@ if (!isset($_SESSION['admin'])) {
 
 // Database configuration
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../classes/StockManager.php';
+require_once __DIR__ . '/../classes/Currency.php';
 
 /**
  * DashboardStats - handles fetching dashboard statistics
@@ -53,11 +55,27 @@ class DashboardStats {
     }
     
     /**
-     * Get low stock products (stock < 10)
+     * Get low stock products (stock <= 5)
      */
     public function getLowStockProducts(): array {
-        $stmt = $this->pdo->query('SELECT name, brand, stock FROM products WHERE stock < 10 ORDER BY stock ASC LIMIT 5');
+        $stmt = $this->pdo->query('SELECT name, brand, stock FROM products WHERE stock <= 5 ORDER BY stock ASC LIMIT 5');
         return $stmt->fetchAll();
+    }
+    
+    /**
+     * Get stock statistics
+     */
+    public function getStockStatistics(): array {
+        $stmt = $this->pdo->query('
+            SELECT 
+                COUNT(*) as total_products,
+                SUM(stock) as total_stock,
+                COUNT(CASE WHEN stock = 0 THEN 1 END) as out_of_stock,
+                COUNT(CASE WHEN stock > 0 AND stock <= 5 THEN 1 END) as low_stock,
+                COUNT(CASE WHEN stock > 5 THEN 1 END) as in_stock
+            FROM products
+        ');
+        return $stmt->fetch();
     }
     
     /**
@@ -79,12 +97,15 @@ class DashboardStats {
 // Fetch dashboard statistics
 try {
     $stats = new DashboardStats(Database::getConnection());
+    $stockManager = new StockManager(Database::getConnection());
+    
     $totalUsers = $stats->getTotalUsers();
     $totalProducts = $stats->getTotalProducts();
     $totalOrders = $stats->getTotalOrders();
     $totalRevenue = $stats->getTotalRevenue();
     $lowStockProducts = $stats->getLowStockProducts();
     $recentOrders = $stats->getRecentOrders();
+    $stockStats = $stats->getStockStatistics();
 } catch (Exception $e) {
     $error = 'Error loading dashboard data';
 }
@@ -188,11 +209,74 @@ $adminName = $_SESSION['admin']['name'];
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-gray-400 text-sm mb-1">Total Revenue</p>
-                        <p class="text-3xl font-bold text-white">$<?php echo number_format($totalRevenue, 2); ?></p>
+                        <p class="text-3xl font-bold text-white">₹<?php echo number_format($totalRevenue, 2); ?></p>
                     </div>
                     <div class="bg-red-600/20 p-3 rounded-lg">
                         <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stock Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Total Stock -->
+            <div class="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm mb-1">Total Stock</p>
+                        <p class="text-3xl font-bold text-white"><?php echo $stockStats['total_stock'] ?? 0; ?></p>
+                    </div>
+                    <div class="bg-blue-600/20 p-3 rounded-lg">
+                        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- In Stock -->
+            <div class="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm mb-1">In Stock</p>
+                        <p class="text-3xl font-bold text-green-400"><?php echo $stockStats['in_stock'] ?? 0; ?></p>
+                    </div>
+                    <div class="bg-green-600/20 p-3 rounded-lg">
+                        <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Low Stock -->
+            <div class="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm mb-1">Low Stock</p>
+                        <p class="text-3xl font-bold text-yellow-400"><?php echo $stockStats['low_stock'] ?? 0; ?></p>
+                    </div>
+                    <div class="bg-yellow-600/20 p-3 rounded-lg">
+                        <svg class="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Out of Stock -->
+            <div class="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm mb-1">Out of Stock</p>
+                        <p class="text-3xl font-bold text-red-400"><?php echo $stockStats['out_of_stock'] ?? 0; ?></p>
+                    </div>
+                    <div class="bg-red-600/20 p-3 rounded-lg">
+                        <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                     </div>
                 </div>
@@ -228,7 +312,7 @@ $adminName = $_SESSION['admin']['name'];
                                 </div>
                                 <div class="flex justify-between items-center">
                                     <p class="text-gray-400 text-sm"><?php echo date('M d, Y', strtotime($order['created_at'])); ?></p>
-                                    <p class="text-white font-bold">$<?php echo number_format($order['total'], 2); ?></p>
+                                    <p class="text-white font-bold"><?php echo Currency::format($order['total']); ?></p>
                                 </div>
                             </div>
                         <?php endforeach; ?>

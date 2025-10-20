@@ -1,11 +1,14 @@
 <?php
-session_start();
-
 declare(strict_types=1);
 
+session_start();
+
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/classes/Cart.php';
 require_once __DIR__ . '/classes/RazorpayPayment.php';
+require_once __DIR__ . '/classes/Currency.php';
 require_once __DIR__ . '/classes/RazorpayConfig.php';
+require_once __DIR__ . '/classes/AddressRepository.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user'])) {
@@ -14,10 +17,20 @@ if (!isset($_SESSION['user'])) {
     exit;
 }
 
-// Check if cart exists and has items
-if (!isset($_SESSION['cart']) || empty($_SESSION['cart'])) {
+// Use unified Cart class
+$cart = new Cart();
+
+// Check if cart has items
+if (!$cart->hasItems()) {
     $_SESSION['error'] = 'Your cart is empty. Please add products before checkout.';
     header('Location: cart.php');
+    exit;
+}
+
+// Check if address is provided
+if (!isset($_SESSION['shipping_address_id'])) {
+    $_SESSION['error'] = 'Please provide your shipping address first.';
+    header('Location: address_form.php');
     exit;
 }
 
@@ -29,7 +42,10 @@ $pdo = Database::getConnection();
 $cartTotal = 0;
 $orderItems = [];
 
-foreach ($_SESSION['cart'] as $productId => $quantity) {
+// Get cart items using unified Cart class
+$cartItems = $cart->getItems(); // [productId => quantity]
+
+foreach ($cartItems as $productId => $quantity) {
     $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ? LIMIT 1');
     $stmt->execute([$productId]);
     $product = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -155,6 +171,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
                     </div>
                 </div>
 
+                <!-- Shipping Address -->
+                <?php
+                $addressRepo = new AddressRepository(Database::getConnection());
+                $shippingAddress = $addressRepo->getById((int)$_SESSION['shipping_address_id']);
+                if ($shippingAddress):
+                ?>
+                <div class="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-6">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <svg class="w-6 h-6 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        Shipping Address
+                    </h2>
+                    <div class="space-y-2 text-gray-300">
+                        <p><span class="text-gray-500">Name:</span> <?php echo htmlspecialchars($shippingAddress->getName()); ?></p>
+                        <p><span class="text-gray-500">Address:</span> <?php echo htmlspecialchars($shippingAddress->getStreetAddress()); ?></p>
+                        <p><span class="text-gray-500">City:</span> <?php echo htmlspecialchars($shippingAddress->getCity()); ?>, <?php echo htmlspecialchars($shippingAddress->getState()); ?> <?php echo htmlspecialchars($shippingAddress->getZipCode()); ?></p>
+                        <p><span class="text-gray-500">Phone:</span> <?php echo htmlspecialchars($shippingAddress->getPhoneNumber()); ?></p>
+                    </div>
+                    <div class="mt-4">
+                        <a href="address_form.php" class="text-red-600 hover:text-red-500 text-sm">Change Address</a>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <!-- Order Items -->
                 <div class="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-6">
                     <h2 class="text-xl font-bold mb-4 flex items-center">
@@ -169,10 +211,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
                                 <div>
                                     <p class="font-semibold"><?php echo htmlspecialchars($item['name']); ?></p>
                                     <p class="text-sm text-gray-400">
-                                        ₹<?php echo number_format($item['price'], 2); ?> × <?php echo $item['quantity']; ?>
+                                        <?php echo Currency::format($item['price']); ?> × <?php echo $item['quantity']; ?>
                                     </p>
                                 </div>
-                                <p class="font-bold text-red-600">₹<?php echo number_format($item['subtotal'], 2); ?></p>
+                                <p class="font-bold text-red-600"><?php echo Currency::format($item['subtotal']); ?></p>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -188,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
                     <div class="space-y-2 mb-4">
                         <div class="flex justify-between text-gray-400">
                             <span>Subtotal</span>
-                            <span>₹<?php echo number_format($cartTotal, 2); ?></span>
+                            <span><?php echo Currency::format($cartTotal); ?></span>
                         </div>
                         <div class="flex justify-between text-gray-400">
                             <span>Tax (0%)</span>
@@ -201,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
                         <div class="border-t border-white/20 pt-2 mt-2">
                             <div class="flex justify-between text-xl font-bold">
                                 <span>Total</span>
-                                <span class="text-red-600">₹<?php echo number_format($cartTotal, 2); ?></span>
+                                <span class="text-red-600"><?php echo Currency::format($cartTotal); ?></span>
                             </div>
                         </div>
                     </div>
@@ -224,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_order'])) {
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
-                            Pay ₹<?php echo number_format($cartTotal, 2); ?>
+                            Pay <?php echo Currency::format($cartTotal); ?>
                         </button>
                     <?php endif; ?>
 

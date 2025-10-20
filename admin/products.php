@@ -10,6 +10,7 @@ if (!isset($_SESSION['admin'])) {
 // Database configuration and Image Upload Handler
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../classes/ImageUploadHandler.php';
+require_once __DIR__ . '/../classes/Currency.php';
 
 /**
  * Product class - represents a product entity
@@ -219,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_product'])) {
     }
     
     // Only proceed if no upload errors (or no file uploaded)
-    if (!isset($message)) {
+    if ($messageType !== 'error') {
         // Validate required fields
         if (!empty($name) && !empty($brand) && !empty($scale) && $price > 0 && $stock >= 0) {
             try {
@@ -292,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_product'])) {
     }
     
     // Only proceed if no upload errors
-    if (!isset($message)) {
+    if ($messageType !== 'error') {
         if (!empty($name) && !empty($brand) && !empty($scale) && $price > 0 && $stock >= 0) {
             if ($repo->updateProduct($id, $name, $brand, $scale, $variant, $year, $type, $price, $stock, $imagePath)) {
                 $message = 'Product updated successfully';
@@ -423,7 +424,7 @@ $adminName = $_SESSION['admin']['name'];
                                 class="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:border-red-500">
                         </div>
                         <div>
-                            <label class="block text-gray-300 mb-2">Price ($) *</label>
+                            <label class="block text-gray-300 mb-2">Price (₹) *</label>
                             <input type="number" name="price" step="0.01" min="0" required
                                 class="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:border-red-500">
                         </div>
@@ -496,7 +497,7 @@ $adminName = $_SESSION['admin']['name'];
                                 class="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:border-red-500">
                         </div>
                         <div>
-                            <label class="block text-gray-300 mb-2">Price ($) *</label>
+                            <label class="block text-gray-300 mb-2">Price (₹) *</label>
                             <input type="number" name="price" step="0.01" min="0" value="<?php echo $editProduct->getPrice(); ?>" required
                                 class="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white focus:outline-none focus:border-red-500">
                         </div>
@@ -559,7 +560,7 @@ $adminName = $_SESSION['admin']['name'];
                                     <td class="px-6 py-4 text-white"><?php echo htmlspecialchars($product->getName()); ?></td>
                                     <td class="px-6 py-4 text-gray-300"><?php echo htmlspecialchars($product->getBrand()); ?></td>
                                     <td class="px-6 py-4 text-gray-300"><?php echo htmlspecialchars($product->getScale()); ?></td>
-                                    <td class="px-6 py-4 text-white font-semibold">$<?php echo number_format($product->getPrice(), 2); ?></td>
+                                    <td class="px-6 py-4 text-white font-semibold"><?php echo Currency::format($product->getPrice()); ?></td>
                                     <td class="px-6 py-4">
                                         <span class="px-2 py-1 rounded-full text-xs font-semibold
                                             <?php echo $product->getStock() < 5 ? 'bg-red-600/20 text-red-300' : ($product->getStock() < 10 ? 'bg-yellow-600/20 text-yellow-300' : 'bg-green-600/20 text-green-300'); ?>">

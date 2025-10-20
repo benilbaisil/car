@@ -1,7 +1,9 @@
 <?php
+declare(strict_types=1);
+
 session_start();
 
-declare(strict_types=1);
+require_once __DIR__ . '/classes/Currency.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user'])) {
@@ -71,19 +73,19 @@ unset($_SESSION['payment_success']); // Clear after reading
                 <!-- Order ID -->
                 <div class="flex justify-between items-center pb-3 border-b border-white/10">
                     <span class="text-gray-400">Order ID</span>
-                    <span class="font-mono font-bold text-green-400">#<?php echo htmlspecialchars($paymentData['order_id']); ?></span>
+                    <span class="font-mono font-bold text-green-400">#<?php echo htmlspecialchars((string)$paymentData['order_id']); ?></span>
                 </div>
                 
                 <!-- Payment ID -->
                 <div class="flex justify-between items-center pb-3 border-b border-white/10">
                     <span class="text-gray-400">Payment ID</span>
-                    <span class="font-mono text-sm text-gray-300"><?php echo htmlspecialchars($paymentData['payment_id']); ?></span>
+                    <span class="font-mono text-sm text-gray-300"><?php echo htmlspecialchars((string)$paymentData['payment_id']); ?></span>
                 </div>
                 
                 <!-- Amount Paid -->
                 <div class="flex justify-between items-center pb-3 border-b border-white/10">
                     <span class="text-gray-400">Amount Paid</span>
-                    <span class="text-2xl font-bold text-green-400">₹<?php echo number_format((float)$paymentData['amount'], 2); ?></span>
+                    <span class="text-2xl font-bold text-green-400"><?php echo Currency::format((float)$paymentData['amount']); ?></span>
                 </div>
                 
                 <!-- Status -->

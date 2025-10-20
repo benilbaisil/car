@@ -1,50 +1,9 @@
 <?php
 session_start();
 
-if (!isset($_SESSION['user'])) {
-    header('Location: login.php');
-    exit;
-}
-
-require_once 'config.php';
-require_once 'classes/StockManager.php';
-require_once 'classes/Currency.php';
-
-$user = $_SESSION['user'];
-
-// Initialize stock manager
-$stockManager = new StockManager(Database::getConnection());
-
-// Get basic user statistics
-$userId = (int)$_SESSION['user']['id'];
-$pdo = Database::getConnection();
-
-// Get order statistics
-$stats = [
-    'total_orders' => 0,
-    'total_spent' => 0
-];
-
-try {
-    $stmt = $pdo->prepare("SELECT COUNT(*) as total_orders, COALESCE(SUM(total), 0) as total_spent FROM orders WHERE user_id = ?");
-    $stmt->execute([$userId]);
-    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($result) {
-        $stats = $result;
-    }
-} catch (Exception $e) {
-    // Handle error silently, use default values
-}
-
-// Get recent orders
-$recentOrders = [];
-try {
-    $stmt = $pdo->prepare("SELECT id, total, status, created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 3");
-    $stmt->execute([$userId]);
-    $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Handle error silently, use empty array
-}
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/classes/Cart.php';
+require_once __DIR__ . '/classes/Currency.php';
 
 // Product Repository for fetching products
 class ProductRepository {
@@ -54,15 +13,16 @@ class ProductRepository {
         $this->pdo = $pdo;
     }
     
-    public function getFeaturedProducts(): array {
-        $stmt = $this->pdo->prepare('SELECT id, name, brand, scale, variant, price, stock, image_url FROM products WHERE stock > 0 ORDER BY id LIMIT 6');
+    public function getAllProducts(): array {
+        $stmt = $this->pdo->prepare('SELECT id, name, brand, scale, variant, price, stock, image_url FROM products ORDER BY id');
         $stmt->execute();
         return $stmt->fetchAll();
     }
     
-    public function getAllProducts(): array {
-        $stmt = $this->pdo->prepare('SELECT id, name, brand, scale, variant, price, stock, image_url FROM products ORDER BY id');
-        $stmt->execute();
+    public function searchProducts(string $keyword): array {
+        $stmt = $this->pdo->prepare('SELECT id, name, brand, scale, variant, price, stock, image_url FROM products WHERE name LIKE ? OR brand LIKE ? ORDER BY id');
+        $searchTerm = "%{$keyword}%";
+        $stmt->execute([$searchTerm, $searchTerm]);
         return $stmt->fetchAll();
     }
 }
@@ -95,7 +55,7 @@ class Navigation {
         $html .= '<a href="cart.php" class="text-white hover:text-red-600 transition">Cart (' . $cartCount . ')</a>';
         
         if ($this->isLoggedIn) {
-            $html .= '<a href="dashboard.php" class="text-white hover:text-red-600 transition bg-red-600/20 px-3 py-1 rounded">Dashboard</a>';
+            $html .= '<a href="dashboard.php" class="text-white hover:text-red-600 transition">Dashboard</a>';
             $html .= '<a href="my_orders.php" class="text-white hover:text-red-600 transition">My Orders</a>';
             $html .= '<a href="logout.php" class="text-white hover:text-red-600 transition">Logout</a>';
         } else {
@@ -125,7 +85,7 @@ class Navigation {
         $html .= '<a href="cart.php" class="block text-white hover:text-red-600 transition">Cart (' . $cartCount . ')</a>';
         
         if ($this->isLoggedIn) {
-            $html .= '<a href="dashboard.php" class="block text-white hover:text-red-600 transition bg-red-600/20 px-3 py-1 rounded">Dashboard</a>';
+            $html .= '<a href="dashboard.php" class="block text-white hover:text-red-600 transition">Dashboard</a>';
             $html .= '<a href="my_orders.php" class="block text-white hover:text-red-600 transition">My Orders</a>';
             $html .= '<a href="logout.php" class="block text-white hover:text-red-600 transition">Logout</a>';
         } else {
@@ -138,7 +98,7 @@ class Navigation {
 }
 
 // Page Renderer Class
-class DashboardRenderer {
+class ShopRenderer {
     private Navigation $navigation;
     private ProductRepository $productRepo;
     
@@ -155,7 +115,7 @@ class DashboardRenderer {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Dashboard - Elite Diecast</title>
+            <title>Shop Collection - Elite Diecast</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <style>
                 @keyframes fadeIn {
@@ -210,18 +170,14 @@ class DashboardRenderer {
     public function renderHero() {
         ob_start();
         ?>
-        <div class="relative h-screen">
+        <div class="relative h-96">
             <div class="absolute inset-0 bg-gradient-to-r from-black/80 to-black/40 z-10"></div>
-            <img src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1920&h=1080&fit=crop" alt="Hero" class="w-full h-full object-cover">
+            <img src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1920&h=600&fit=crop" alt="Shop Collection" class="w-full h-full object-cover">
             <div class="absolute inset-0 z-20 flex items-center">
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
                     <div class="max-w-3xl animate-fade-in">
-                        <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">Welcome Back, <?php echo htmlspecialchars($user['name'] ?? ($user['email'] ?? 'Collector')); ?>!</h1>
-                        <p class="text-xl md:text-2xl text-gray-300 mb-8">Continue building your premium diecast collection</p>
-                        <div class="flex flex-col sm:flex-row gap-4">
-                            <a href="#dashboard-stats" class="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold transition transform hover:scale-105 text-center">View Dashboard</a>
-                            <a href="#featured-products" class="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white px-8 py-4 rounded-lg font-semibold border border-white/20 transition text-center">Browse Collection</a>
-                        </div>
+                        <h1 class="text-4xl md:text-6xl font-bold text-white mb-6">Shop Collection</h1>
+                        <p class="text-xl md:text-2xl text-gray-300 mb-8">Discover our premium diecast car models</p>
                     </div>
                 </div>
             </div>
@@ -230,96 +186,25 @@ class DashboardRenderer {
         return ob_get_clean();
     }
     
-    public function renderDashboardStats($stats, $recentOrders) {
+    public function renderSearchBar() {
         ob_start();
         ?>
-        <section id="dashboard-stats" class="py-20">
+        <section class="py-12 bg-black/40 border-b border-white/10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h2 class="text-4xl font-bold text-white mb-12 text-center">Your Dashboard</h2>
-                
-                <!-- Dashboard Stats Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-                        <h2 class="text-white font-semibold mb-2">My Orders</h2>
-                        <p class="text-gray-400 text-sm">You have <?php echo $stats['total_orders']; ?> order(s) with <?php echo Currency::format($stats['total_spent']); ?> total spent.</p>
-                        <a href="my_orders.php" class="inline-block mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">View Orders</a>
-                    </div>
-
-                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-                        <h2 class="text-white font-semibold mb-2">Cart</h2>
-                        <p class="text-gray-400 text-sm">Manage your shopping cart and checkout.</p>
-                        <a href="cart.php" class="inline-block mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg">View Cart</a>
-                    </div>
-
-                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-                        <h2 class="text-white font-semibold mb-2">Shop Collection</h2>
-                        <p class="text-gray-400 text-sm">Browse our premium diecast models.</p>
-                        <a href="shop.php" class="inline-block mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg">Browse Models</a>
-                    </div>
-
-                    <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-                        <h2 class="text-white font-semibold mb-2">Account</h2>
-                        <div class="text-gray-300 text-sm">
-                            <div><span class="text-gray-400">Name:</span> <?php echo htmlspecialchars($user['name'] ?? '-'); ?></div>
-                            <div><span class="text-gray-400">Email:</span> <?php echo htmlspecialchars($user['email'] ?? '-'); ?></div>
+                <div class="max-w-2xl mx-auto">
+                    <form method="GET" action="shop.php" class="relative">
+                        <div class="flex">
+                            <input type="text" name="search" placeholder="Search for models, brands, or keywords..." 
+                                   value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>"
+                                   class="flex-1 px-6 py-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-l-lg text-white placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20">
+                            <button type="submit" class="px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-r-lg font-semibold transition transform hover:scale-105">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </button>
                         </div>
-                        <a href="account.php" class="inline-block mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg">Manage Account</a>
-                    </div>
+                    </form>
                 </div>
-
-                <?php if (!empty($recentOrders)): ?>
-                <div class="mb-12">
-                    <h2 class="text-2xl font-bold text-white mb-6">Recent Orders</h2>
-                    <div class="space-y-4">
-                        <?php foreach ($recentOrders as $order): ?>
-                            <div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center space-x-4">
-                                        <div>
-                                            <h3 class="text-lg font-semibold text-white">Order #<?php echo $order['id']; ?></h3>
-                                            <p class="text-sm text-gray-400">
-                                                <?php echo date('M j, Y', strtotime($order['created_at'])); ?> • Status: <?php echo ucfirst($order['status']); ?>
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center space-x-4">
-                                        <div class="text-right">
-                                            <p class="text-lg font-bold text-white"><?php echo Currency::format($order['total']); ?></p>
-                                        </div>
-                                        <span class="px-3 py-1 rounded-full text-sm font-semibold 
-                                            <?php 
-                                            echo match($order['status']) {
-                                                'pending' => 'bg-yellow-600/20 text-yellow-300',
-                                                'shipped' => 'bg-blue-600/20 text-blue-300',
-                                                'delivered' => 'bg-green-600/20 text-green-300',
-                                                'cancelled' => 'bg-red-600/20 text-red-300',
-                                                default => 'bg-gray-600/20 text-gray-300'
-                                            };
-                                            ?>">
-                                            <?php echo ucfirst($order['status']); ?>
-                                        </span>
-                                        <a href="my_orders.php" class="text-blue-400 hover:text-blue-300 text-sm">View Details</a>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                    <div class="mt-6 text-center">
-                        <a href="my_orders.php" class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
-                            View All Orders
-                            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-                <?php else: ?>
-                <div class="mb-12 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6">
-                    <h2 class="text-white font-semibold mb-4">Recent Activity</h2>
-                    <p class="text-gray-400 text-sm">No orders yet. Start building your diecast collection!</p>
-                    <a href="#featured-products" class="inline-block mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg">Browse Products</a>
-                </div>
-                <?php endif; ?>
             </div>
         </section>
         <?php
@@ -341,6 +226,9 @@ class DashboardRenderer {
             <div class="p-6">
                 <h3 class="text-xl font-bold text-white mb-2"><?php echo htmlspecialchars($product['name']); ?></h3>
                 <p class="text-sm text-gray-400 mb-1"><?php echo htmlspecialchars($product['brand']); ?> • <?php echo htmlspecialchars($product['scale']); ?></p>
+                <?php if (!empty($product['variant'])): ?>
+                    <p class="text-xs text-gray-500 mb-2"><?php echo htmlspecialchars($product['variant']); ?></p>
+                <?php endif; ?>
                 <p class="text-2xl text-red-600 font-bold mb-4"><?php echo Currency::format((float)$product['price']); ?></p>
 
                 <!-- Stock information displayed above the Add to Cart button -->
@@ -353,7 +241,7 @@ class DashboardRenderer {
                 </div>
 
                 <!-- Add to Cart form with stock check -->
-                <form method="post" action="index.php">
+                <form method="post" action="shop.php">
                     <input type="hidden" name="product_id" value="<?php echo (int)$product['id']; ?>">
                     <button type="submit" name="add_to_cart" value="1"
                             class="w-full py-2 rounded-lg transition <?php echo $isInStock ? 'bg-white/10 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'; ?>"
@@ -367,26 +255,42 @@ class DashboardRenderer {
         return ob_get_clean();
     }
     
-    public function renderFeaturedProducts() {
+    public function renderProducts($products) {
         ob_start();
-        $products = $this->productRepo->getFeaturedProducts();
         ?>
-        <section id="featured-products" class="py-20">
+        <section class="py-20">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h2 class="text-4xl font-bold text-white mb-12 text-center">Featured Collection</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <?php foreach ($products as $product): ?>
-                        <?php echo $this->renderProductCard($product); ?>
-                    <?php endforeach; ?>
-                </div>
-                <div class="text-center mt-12">
-                    <a href="shop.php" class="inline-flex items-center px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition transform hover:scale-105">
-                        View All Products
-                        <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                        </svg>
-                    </a>
-                </div>
+                <?php if (empty($products)): ?>
+                    <div class="text-center py-20">
+                        <div class="text-gray-400 mb-4">
+                            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.29-1.009-5.824-2.709M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-4">No Products Found</h3>
+                        <p class="text-gray-400 mb-8">Try adjusting your search terms or browse all products.</p>
+                        <a href="shop.php" class="inline-flex items-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition">
+                            View All Products
+                        </a>
+                    </div>
+                <?php else: ?>
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-bold text-white mb-4">
+                            <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
+                                Search Results for "<?php echo htmlspecialchars($_GET['search']); ?>"
+                            <?php else: ?>
+                                Our Collection
+                            <?php endif; ?>
+                        </h2>
+                        <p class="text-gray-400"><?php echo count($products); ?> product(s) found</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                        <?php foreach ($products as $product): ?>
+                            <?php echo $this->renderProductCard($product); ?>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </section>
         <?php
@@ -414,7 +318,9 @@ class DashboardRenderer {
                             <a href="index.php#about" class="block hover:text-red-600">About Us</a>
                             <a href="shop.php" class="block hover:text-red-600">Shop Collection</a>
                             <a href="cart.php" class="block hover:text-red-600">Cart</a>
-                            <a href="my_orders.php" class="block hover:text-red-600">My Orders</a>
+                            <?php if (isset($_SESSION['user'])): ?>
+                                <a href="dashboard.php" class="block hover:text-red-600">Dashboard</a>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <div>
@@ -461,12 +367,12 @@ class DashboardRenderer {
         return ob_get_clean();
     }
     
-    public function render($stats, $recentOrders) {
+    public function render($products) {
         echo $this->renderHeader();
         echo $this->renderNavigation();
         echo $this->renderHero();
-        echo $this->renderDashboardStats($stats, $recentOrders);
-        echo $this->renderFeaturedProducts();
+        echo $this->renderSearchBar();
+        echo $this->renderProducts($products);
         echo $this->renderFooter();
     }
 }
@@ -478,17 +384,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'], $_POST
     $cart = new Cart();
     $cart->addProduct($productId, 1);
     // Optional: PRG pattern to avoid resubmission on refresh
-    header('Location: dashboard.php');
+    header('Location: shop.php' . (isset($_GET['search']) ? '?search=' . urlencode($_GET['search']) : ''));
     exit;
 }
 
 // Create navigation with login status
-$navigation = new Navigation(true); // Always logged in for dashboard
+$navigation = new Navigation(isset($_SESSION['user']));
 
 // Create product repository for database access
 $productRepo = new ProductRepository(Database::getConnection());
 
-// Create dashboard renderer and render the page
-$dashboard = new DashboardRenderer($navigation, $productRepo);
-$dashboard->render($stats, $recentOrders);
+// Get products based on search
+$products = [];
+if (isset($_GET['search']) && !empty(trim($_GET['search']))) {
+    $products = $productRepo->searchProducts(trim($_GET['search']));
+} else {
+    $products = $productRepo->getAllProducts();
+}
+
+// Create shop renderer and render the page
+$shop = new ShopRenderer($navigation, $productRepo);
+$shop->render($products);
 ?>

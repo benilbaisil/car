@@ -2,6 +2,8 @@
 session_start();
 // DB config for saving contact form submissions
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/classes/Cart.php';
+require_once __DIR__ . '/classes/Currency.php';
 
 // Base Vehicle Class
 abstract class Vehicle {
@@ -32,7 +34,7 @@ abstract class Vehicle {
     }
     
     public function getFormattedPrice() {
-        return '$' . number_format($this->price, 0, '.', ',');
+        return Currency::format((float)$this->price);
     }
     
     public function getImage() {
@@ -160,6 +162,7 @@ class Navigation {
         
         if ($this->isLoggedIn) {
             $html .= '<a href="dashboard.php" class="text-white hover:text-red-600 transition">Dashboard</a>';
+            $html .= '<a href="my_orders.php" class="text-white hover:text-red-600 transition">My Orders</a>';
             $html .= '<a href="logout.php" class="text-white hover:text-red-600 transition">Logout</a>';
         } else {
             $html .= '<a href="login.php" class="text-white hover:text-red-600 transition flex items-center space-x-1">
@@ -189,6 +192,7 @@ class Navigation {
         
         if ($this->isLoggedIn) {
             $html .= '<a href="dashboard.php" class="block text-white hover:text-red-600 transition">Dashboard</a>';
+            $html .= '<a href="my_orders.php" class="block text-white hover:text-red-600 transition">My Orders</a>';
             $html .= '<a href="logout.php" class="block text-white hover:text-red-600 transition">Logout</a>';
         } else {
             $html .= '<a href="login.php" class="block text-white hover:text-red-600 transition">Login</a>';
@@ -261,33 +265,7 @@ class ContactService {
     }
 }
 
-// Cart Class (session-based)
-// This class encapsulates cart operations and stores cart data in the session.
-// Each item is tracked by product (vehicle) id with a quantity counter.
-class Cart {
-    private string $sessionKey = 'cart';
-
-    public function __construct() {
-        if (!isset($_SESSION[$this->sessionKey])) {
-            // Initialize the cart structure in session on first use
-            $_SESSION[$this->sessionKey] = [ 'items' => [] ];
-        }
-    }
-
-    // Add a product by id to the cart, increasing quantity if it already exists
-    public function addProduct(int $productId, int $quantity = 1): void {
-        if ($quantity < 1) return;
-        if (!isset($_SESSION[$this->sessionKey]['items'][$productId])) {
-            $_SESSION[$this->sessionKey]['items'][$productId] = 0;
-        }
-        $_SESSION[$this->sessionKey]['items'][$productId] += $quantity;
-    }
-
-    // Retrieve the current cart items map: [productId => quantity]
-    public function getItems(): array {
-        return (array)($_SESSION[$this->sessionKey]['items'] ?? []);
-    }
-}
+// Cart class is now imported from classes/Cart.php for consistency across all pages
 
 // Product Repository for fetching from MySQL database
 class ProductRepository {
@@ -345,6 +323,16 @@ class PageRenderer {
                 .animate-slide-in {
                     animation: slideIn 0.5s ease-out;
                 }
+                
+                /* Smooth scrolling for anchor links */
+                html {
+                    scroll-behavior: smooth;
+                }
+                
+                /* Offset for fixed navigation */
+                section[id] {
+                    scroll-margin-top: 80px;
+                }
             </style>
         </head>
         <body class="bg-gray-900">
@@ -392,7 +380,7 @@ class PageRenderer {
                         <h1 class="text-5xl md:text-7xl font-bold text-white mb-6">Collect Your Dreams</h1>
                         <p class="text-xl md:text-2xl text-gray-300 mb-8">Explore our collection of <?php echo $this->showroom->getTotalVehicles(); ?>+ premium diecast car models</p>
                         <div class="flex flex-col sm:flex-row gap-4">
-                            <a href="#inventory" class="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold transition transform hover:scale-105 text-center">Shop Collection</a>
+                            <a href="#our-collection" class="bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-lg font-semibold transition transform hover:scale-105 text-center">Shop Collection</a>
                             <a href="#contact" class="bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white px-8 py-4 rounded-lg font-semibold border border-white/20 transition text-center">Preorder New Releases</a>
                         </div>
                     </div>
@@ -422,7 +410,7 @@ class PageRenderer {
             <div class="p-6">
                 <h3 class="text-xl font-bold text-white mb-2"><?php echo htmlspecialchars($product['name']); ?></h3>
                 <p class="text-sm text-gray-400 mb-1"><?php echo htmlspecialchars($product['brand']); ?> • <?php echo htmlspecialchars($product['scale']); ?></p>
-                <p class="text-2xl text-red-600 font-bold mb-4">$<?php echo number_format((float)$product['price'], 2); ?></p>
+                <p class="text-2xl text-red-600 font-bold mb-4"><?php echo Currency::format((float)$product['price']); ?></p>
                 
                 <!-- Stock information displayed above the Add to Cart button -->
                 <div class="mb-3">
@@ -457,18 +445,32 @@ class PageRenderer {
         // Fetch products from database with stock information
         $products = $this->productRepo->getAllProducts();
         ?>
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">Our Collection</h2>
-                <p class="text-gray-400 text-lg">Premium diecast models with real-time stock availability</p>
-            </div>
+        <section id="our-collection" class="py-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-16">
+                    <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">Our Collection</h2>
+                    <p class="text-gray-400 text-lg">Premium diecast models with real-time stock availability</p>
+                </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <?php foreach ($products as $product): ?>
-                    <?php echo $this->renderProductCard($product); ?>
-                <?php endforeach; ?>
+                <?php if (empty($products)): ?>
+                    <div class="text-center py-20">
+                        <div class="text-gray-400 mb-4">
+                            <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.29-1.009-5.824-2.709M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-4">No Products Available</h3>
+                        <p class="text-gray-400 mb-8">Check back soon for our latest diecast models!</p>
+                    </div>
+                <?php else: ?>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                        <?php foreach ($products as $product): ?>
+                            <?php echo $this->renderProductCard($product); ?>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
-        </div>
+        </section>
         <?php
         return ob_get_clean();
     }
@@ -658,6 +660,56 @@ class PageRenderer {
                 const menu = document.getElementById('mobileMenu');
                 menu.classList.toggle('hidden');
             }
+            
+            // Enhanced smooth scrolling with offset for fixed navigation
+            document.addEventListener('DOMContentLoaded', function() {
+                // Handle anchor links with smooth scrolling
+                const anchorLinks = document.querySelectorAll('a[href^="#"]');
+                anchorLinks.forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const targetId = this.getAttribute('href').substring(1);
+                        const targetElement = document.getElementById(targetId);
+                        
+                        if (targetElement) {
+                            const offsetTop = targetElement.offsetTop - 80; // Account for fixed navigation
+                            window.scrollTo({
+                                top: offsetTop,
+                                behavior: 'smooth'
+                            });
+                        }
+                    });
+                });
+                
+                // Add scroll effect to navigation
+                window.addEventListener('scroll', function() {
+                    const nav = document.querySelector('nav');
+                    if (window.scrollY > 100) {
+                        nav.classList.add('bg-black/98');
+                    } else {
+                        nav.classList.remove('bg-black/98');
+                    }
+                });
+                
+                // Add intersection observer for fade-in animations
+                const observerOptions = {
+                    threshold: 0.1,
+                    rootMargin: '0px 0px -50px 0px'
+                };
+                
+                const observer = new IntersectionObserver(function(entries) {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('animate-fade-in');
+                        }
+                    });
+                }, observerOptions);
+                
+                // Observe all product cards
+                document.querySelectorAll('.bg-white\\/5').forEach(card => {
+                    observer.observe(card);
+                });
+            });
         </script>
         </body>
         </html>

@@ -9,6 +9,7 @@ if (!isset($_SESSION['admin'])) {
 
 // Database configuration
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../classes/Currency.php';
 
 /**
  * Order class - represents an order entity
@@ -302,22 +303,22 @@ $adminName = $_SESSION['admin']['name'];
             <div class="bg-yellow-600/10 backdrop-blur-sm rounded-xl p-6 border border-yellow-600/30">
                 <p class="text-yellow-300 text-sm mb-1">Pending Orders</p>
                 <p class="text-3xl font-bold text-white"><?php echo $orderStats['pending']['count']; ?></p>
-                <p class="text-yellow-300 text-sm mt-2">$<?php echo number_format($orderStats['pending']['revenue'], 2); ?></p>
+                <p class="text-yellow-300 text-sm mt-2"><?php echo Currency::format($orderStats['pending']['revenue']); ?></p>
             </div>
             <div class="bg-blue-600/10 backdrop-blur-sm rounded-xl p-6 border border-blue-600/30">
                 <p class="text-blue-300 text-sm mb-1">Shipped Orders</p>
                 <p class="text-3xl font-bold text-white"><?php echo $orderStats['shipped']['count']; ?></p>
-                <p class="text-blue-300 text-sm mt-2">$<?php echo number_format($orderStats['shipped']['revenue'], 2); ?></p>
+                <p class="text-blue-300 text-sm mt-2"><?php echo Currency::format($orderStats['shipped']['revenue']); ?></p>
             </div>
             <div class="bg-green-600/10 backdrop-blur-sm rounded-xl p-6 border border-green-600/30">
                 <p class="text-green-300 text-sm mb-1">Delivered Orders</p>
                 <p class="text-3xl font-bold text-white"><?php echo $orderStats['delivered']['count']; ?></p>
-                <p class="text-green-300 text-sm mt-2">$<?php echo number_format($orderStats['delivered']['revenue'], 2); ?></p>
+                <p class="text-green-300 text-sm mt-2"><?php echo Currency::format($orderStats['delivered']['revenue']); ?></p>
             </div>
             <div class="bg-red-600/10 backdrop-blur-sm rounded-xl p-6 border border-red-600/30">
                 <p class="text-red-300 text-sm mb-1">Cancelled Orders</p>
                 <p class="text-3xl font-bold text-white"><?php echo $orderStats['cancelled']['count']; ?></p>
-                <p class="text-red-300 text-sm mt-2">$<?php echo number_format($orderStats['cancelled']['revenue'], 2); ?></p>
+                <p class="text-red-300 text-sm mt-2"><?php echo Currency::format($orderStats['cancelled']['revenue']); ?></p>
             </div>
         </div>
         
@@ -348,15 +349,15 @@ $adminName = $_SESSION['admin']['name'];
                                     <p class="text-gray-400 text-sm"><?php echo htmlspecialchars($item->getProductBrand()); ?></p>
                                 </div>
                                 <div class="text-right">
-                                    <p class="text-white"><?php echo $item->getQuantity(); ?> × $<?php echo number_format($item->getUnitPrice(), 2); ?></p>
-                                    <p class="text-gray-400 text-sm">= $<?php echo number_format($item->getSubtotal(), 2); ?></p>
+                                    <p class="text-white"><?php echo $item->getQuantity(); ?> × <?php echo Currency::format($item->getUnitPrice()); ?></p>
+                                    <p class="text-gray-400 text-sm">= <?php echo Currency::format($item->getSubtotal()); ?></p>
                                 </div>
                             </div>
                         <?php endforeach; ?>
                     </div>
                     <div class="mt-4 pt-4 border-t border-white/10 flex justify-between">
                         <p class="text-white font-bold">Total:</p>
-                        <p class="text-white font-bold text-xl">$<?php echo number_format($viewOrder->getTotal(), 2); ?></p>
+                        <p class="text-white font-bold text-xl"><?php echo Currency::format($viewOrder->getTotal()); ?></p>
                     </div>
                 </div>
                 
@@ -416,7 +417,7 @@ $adminName = $_SESSION['admin']['name'];
                                             <?php echo ucfirst($order->getStatus()); ?>
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-white font-bold">$<?php echo number_format($order->getTotal(), 2); ?></td>
+                                    <td class="px-6 py-4 text-white font-bold"><?php echo Currency::format($order->getTotal()); ?></td>
                                     <td class="px-6 py-4 text-gray-300"><?php echo date('M d, Y', strtotime($order->getCreatedAt())); ?></td>
                                     <td class="px-6 py-4">
                                         <a href="?action=view&id=<?php echo $order->getId(); ?>" 

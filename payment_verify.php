@@ -1,10 +1,12 @@
 <?php
-session_start();
-
 declare(strict_types=1);
 
+session_start();
+
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/classes/Cart.php';
 require_once __DIR__ . '/classes/RazorpayPayment.php';
+require_once __DIR__ . '/classes/StockManager.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user'])) {
@@ -39,19 +41,44 @@ try {
         $payment = $razorpayPayment->getPaymentByOrderId($razorpayOrderId);
         
         if ($payment) {
-            // Clear cart after successful payment
-            unset($_SESSION['cart']);
-            unset($_SESSION['pending_order_id']);
+            // Reduce stock for the order
+            $stockManager = new StockManager(Database::getConnection());
+            $orderId = (int)$payment['order_id'];
             
-            // Store success message with order details
-            $_SESSION['payment_success'] = [
-                'order_id' => $payment['order_id'],
-                'payment_id' => $razorpayPaymentId,
-                'amount' => $payment['amount']
-            ];
+            // Get order items for stock reduction
+            $pdo = Database::getConnection();
+            $sql = 'SELECT product_id, quantity FROM order_items WHERE order_id = ?';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$orderId]);
+            $orderItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Redirect to success page
-            header('Location: payment_success.php');
+            // Reduce stock for all items in the order
+            if ($stockManager->reduceStockForOrder($orderItems)) {
+                // Clear cart after successful payment using Cart class
+                $cart = new Cart();
+                $cart->clear();
+                unset($_SESSION['pending_order_id']);
+                
+                // Store success message with order details
+                $_SESSION['payment_success'] = [
+                    'order_id' => $payment['order_id'],
+                    'payment_id' => $razorpayPaymentId,
+                    'amount' => $payment['amount']
+                ];
+                
+                // Redirect to success page
+                header('Location: payment_success.php');
+                exit;
+            } else {
+                // Stock reduction failed
+                $_SESSION['error'] = 'Failed to update product stock. Please contact support.';
+                header('Location: payment_failed.php');
+                exit;
+            }
+        } else {
+            // Payment details not found
+            $_SESSION['error'] = 'Payment details not found.';
+            header('Location: payment_failed.php');
             exit;
         }
     }
